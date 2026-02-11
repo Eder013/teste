@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Boss Fight Melhorada</title>
+<style>
+  body {
+    margin: 0;
+    background: black;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    overflow: hidden;
+  }
+  canvas {
+    background: #222;
+    display: none; /* canvas oculto até começar o jogo */
+    margin: auto;
+    border: 3px solid white;
+    display: block;
+  }
+  #menu {
+    position: fixed;
+    inset: 0;
+    background: #111;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+  #menu img {
+    width: 280px;
+    image-rendering: pixelated;
+    margin-bottom: 30px;
+  }
+  #menu h1 {
+    margin: 0 0 20px;
+    font-size: 2rem;
+    letter-spacing: 3px;
+  }
+  #start-btn {
+    font-size: 1.3rem;
+    padding: 12px 30px;
+    cursor: pointer;
+    border: 2px solid white;
+    background: transparent;
+    color: white;
+    transition: background 0.3s, color 0.3s;
+  }
+  #start-btn:hover {
+    background: white;
+    color: black;
+  }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <!-- Coloque aqui o caminho da sua imagem (salve a logo como logo.png na mesma pasta) -->
+  <img src="logo.png" alt="Logo do Jogo" />
+  <h1>BOSS FIGHT IRADA</h1>
+  <button id="start-btn">JOGAR</button>
+</div>
+
+<h2 style="display:none;" id="game-title">⚔️ Boss Fight Irada roééééé ⚔️</h2>
+<p style="display:none;" id="game-instructions">WASD mover | ESPAÇO atacar | SHIFT dash | E parry | R reiniciar</p>
+<canvas id="game" width="900" height="500"></canvas>
+
+<script>
+const menu = document.getElementById("menu");
+const startBtn = document.getElementById("start-btn");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const title = document.getElementById("game-title");
+const instructions = document.getElementById("game-instructions");
+
+startBtn.onclick = () => {
+  menu.style.display = "none";
+  canvas.style.display = "block";
+  title.style.display = "block";
+  instructions.style.display = "block";
+  loop();
+}
+
+let keys = {}, attackPressed = false;
+document.addEventListener("keydown", e => {
+  keys[e.key] = true;
+  if (e.key === " ") attackPressed = true;
+});
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// HERO
+let hero = {
+  x: 100, y: 250, size: 20,
+  hp: 150, maxHp: 150,
+  speed: 3, dashSpeed: 9, dashTime: 0, dashDuration: 200, dashCD: 0, dashCooldown: 1500,
+  hasSword: true, attackCD: 0,
+  stamina: 100, maxStamina: 100,
+  parryCD: 0, invul: false, invulEnd: 0
+};
+
+// ESPADA
+let sword = { x: Math.random() * 850, y: Math.random() * 450, size: 15, picked: true };
+
+// BOSS
+let boss = {
+  x: 750, y: 250, size: 40,
+  hp: 500, maxHp: 500,
+  baseSpeed: 1.8, speed: 1.8,
+  phase2: false, phase3: false,
+  stun: false, stunEnd: 0,
+  damage: 25
+};
+
+// MINIONS
+let minions = [], lastSpawn = 0;
+
+// ESFERAS DO BOSS
+let spheres = [];
+
+// POÇÃO
+let potion = null, lastPotion = 0;
+
+let gameOver = false;
+
+function spawnMinion() {
+  let angle = Math.random() * 2 * Math.PI;
+  let radius = 50 + Math.random() * 30;
+  minions.push({
+    angle, radius,
+    size: 15,
+    speed: 1.5 + Math.random(),
+    offset: Math.random() * 1000,
+    x: boss.x + Math.cos(angle) * radius,
+    y: boss.y + Math.sin(angle) * radius
+  });
+}
+
+function spawnPotion() {
+  potion = { x: Math.random() * (canvas.width - 20), y: Math.random() * (canvas.height - 20), size: 15 };
+}
+
+function dropSword() {
+  hero.hasSword = false;
+  sword.picked = false;
+  sword.x = Math.random() * (canvas.width - 30) + 15;
+  sword.y = Math.random() * (canvas.height - 30) + 15;
+}
+
+function spawnSphere() {
+  let angle = Math.atan2(hero.y - boss.y, hero.x - boss.x);
+  let speed = 4;
+  spheres.push({ x: boss.x + boss.size / 2, y: boss.y + boss.size / 2, dx: Math.cos(angle) * speed, dy: Math.sin(angle) * speed, size: 12 });
+}
+
+function update() {
+  if (gameOver) {
+    if (keys["r"] || keys["R"]) location.reload();
+    return;
+  }
+  let now = Date.now();
+
+  // HERO MOVEMENT
+  let moveX = 0, moveY = 0;
+  if (keys["W"]) moveY -= 1;
+  if (keys["S"]) moveY += 1;
+  if (keys["A"]) moveX -= 1;
+  if (keys["D"]) moveX += 1;
+
+  // DASH
+  if (keys["Shift"] && now > hero.dashCD && (moveX !== 0 || moveY !== 0)) {
+    hero.dashTime = now;
+    hero.dashCD = now + hero.dashCooldown;
+    hero.invul = true;
+    hero.invulEnd = now + hero.dashDuration;
+  }
+
+  // APPLY DASH
+  let speed = hero.speed;
+  if (hero.dashTime && now - hero.dashTime < hero.dashDuration) {
+    speed = hero.dashSpeed;
+  } else {
+    hero.dashTime = 0;
+  }
+
+  // NORMAL MOVEMENT
+  hero.x += moveX * speed;
+  hero.y += moveY * speed;
+
+  // CLAMP HERO
+  hero.x = Math.max(0, Math.min(canvas.width - hero.size, hero.x));
+  hero.y = Math.max(0, Math.min(canvas.height - hero.size, hero.y));
+
+  // INVUL TIMER
+  if (hero.invul && now > hero.invulEnd) hero.invul = false;
+
+  // BOSS IA
+  if (!boss.stun) {
+    let d = dist(hero, boss);
+    boss.speed = boss.baseSpeed * (d > 250 ? 1.5 : d < 80 ? 0.6 : 1);
+    boss.x += (hero.x - boss.x) * 0.02 * boss.speed;
+    boss.y += (hero.y - boss.y) * 0.02 * boss.speed;
+  } else if (now > boss.stunEnd) boss.stun = false;
+
+  // PHASES
+  if (boss.hp < boss.maxHp * 0.6 && !boss.phase2) { boss.phase2 = true; boss.baseSpeed = 2.2; }
+  if (boss.hp < boss.maxHp * 0.3 && !boss.phase3) { boss.phase3 = true; boss.baseSpeed = 2.8; }
+
+  // SPAWN MINIONS
+  if (boss.phase2 && now - lastSpawn > 2000) { spawnMinion(); lastSpawn = now; }
+
+  // MINIONS IA CIRCULAR
+  minions.forEach(m => {
+    m.angle += 0.02;
+    let bx = boss.x + boss.size / 2, by = boss.y + boss.size / 2;
+    let targetX = bx + Math.cos(m.angle) * m.radius;
+    let targetY = by + Math.sin(m.angle) * m.radius;
+    targetX += (hero.x - targetX) * 0.02;
+    targetY += (hero.y - targetY) * 0.02;
+    m.x += (targetX - (m.x || targetX)) * 0.05 * m.speed;
+    m.y += (targetY - (m.y || targetY)) * 0.05 * m.speed;
+  });
+
+  // ATTACK
+  if (attackPressed && hero.hasSword && now > hero.attackCD) {
+    hero.attackCD = now + 500;
+    if (dist(hero, boss) < 60) { boss.hp -= 20; } else { dropSword(); }
+    attackPressed = false;
+  }
+
+  // PARRY (E)
+  if (keys["E"] && dist(hero, boss) < 40 && now > hero.parryCD) {
+    boss.stun = true; boss.stunEnd = now + 1500; boss.hp -= 10; hero.parryCD = now + 4000;
+  }
+
+  // PICK UP SWORD
+  if (!sword.picked && dist(hero, sword) < 25) { sword.picked = true; hero.hasSword = true; }
+
+  // DAMAGE FROM BOSS
+  if (dist(hero, boss) < 35 && !boss.stun && !hero.invul) { hero.hp -= boss.damage; hero.invul = true; hero.invulEnd = now + 600; }
+
+  // DAMAGE FROM MINIONS
+  minions.forEach(m => {
+    if (dist(hero, m) < 20 && !hero.invul) { hero.hp -= 5; hero.invul = true; hero.invulEnd = now + 500; }
+    if (attackPressed && hero.hasSword && dist(hero, m) < 50) { m.dead = true; }
+  });
+  minions = minions.filter(m => !m.dead);
+
+  // BOSS SPHERES
+  if (boss.phase3 && now % 60 === 0) { spawnSphere(); }
+  spheres.forEach((s, i) => {
+    s.x += s.dx;
+    s.y += s.dy;
+    if (dist(s, hero) < hero.size / 2) { hero.hp -= 15; spheres.splice(i, 1); }
+    if (keys["e"] && dist(hero, s) < 50) { spheres.splice(i, 1); }
+  });
+
+  // POTION
+  if (!potion && now - lastPotion > 8000) { spawnPotion(); lastPotion = now; }
+  if (potion && dist(hero, potion) < 25) { hero.hp = Math.min(hero.maxHp, hero.hp + 30); potion = null; }
+
+  // CHECK GAME OVER
+  if (hero.hp <= 0 || boss.hp <= 0) gameOver = true;
+}
+
+function bar(x, y, w, h, val, max, color) {
+  ctx.fillStyle = "gray"; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color; ctx.fillRect(x, y, w * (val / max), h);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "cyan"; ctx.fillRect(hero.x, hero.y, hero.size, hero.size);
+  ctx.fillStyle = boss.phase3 ? "darkred" : boss.phase2 ? "purple" : "crimson"; ctx.fillRect(boss.x, boss.y, boss.size, boss.size);
+  ctx.fillStyle = "orange"; minions.forEach(m => ctx.fillRect(m.x, m.y, m.size, m.size));
+  spheres.forEach(s => {
+    ctx.fillStyle = "yellow"; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2); ctx.fill();
+  });
+  if (!sword.picked) { ctx.fillStyle = "gold"; ctx.fillRect(sword.x, sword.y, sword.size, sword.size); }
+  if (potion) { ctx.fillStyle = "lime"; ctx.fillRect(potion.x, potion.y, potion.size, potion.size); }
+
+  // BARS
+  bar(20, 20, 200, 15, hero.hp, hero.maxHp, "lime");
+  bar(680, 20, 200, 15, boss.hp, boss.maxHp, "red");
+
+  // DASH CD
+  let now = Date.now();
+  let dashProgress = Math.min(1, (now - hero.dashCD + hero.dashCooldown) / hero.dashCooldown);
+  ctx.fillStyle = "cyan";
+  ctx.fillRect(20, 40, 200 * dashProgress, 10);
+
+  // PARRY CD
+  let parryProgress = Math.min(1, (now - hero.parryCD + 4000) / 4000);
+  ctx.fillStyle = "blue";
+  ctx.fillRect(20, 55, 200 * parryProgress, 10);
+
+  if (gameOver) {
+    ctx.font = "35px Arial"; ctx.fillStyle = "white";
+    ctx.fillText(hero.hp > 0 ? "VOCÊ VENCEU" : "GAME OVER", 330, 250);
+    ctx.font = "18px Arial"; ctx.fillText("Pressione R para reiniciar", 330, 280);
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  if (!gameOver) requestAnimationFrame(loop);
+}
+
+</script>
+</body>
+</html>
