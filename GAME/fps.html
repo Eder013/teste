@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>FPS Arena</title>
+<style>
+body { margin: 0; overflow: hidden; background: black; }
+#hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-family: Arial;
+    font-size: 20px;
+}
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin-left: -10px;
+    margin-top: -10px;
+    border: 2px solid white;
+    border-radius: 50%;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">Vida: <span id="health">100</span> | Pontos: <span id="score">0</span></div>
+<div id="crosshair"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.background = new THREE.Color(0x222222);
+
+let light = new THREE.HemisphereLight(0xffffff, 0x444444);
+scene.add(light);
+
+let floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(200,200),
+    new THREE.MeshStandardMaterial({color:0x333333})
+);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+camera.position.y = 2;
+
+let enemies = [];
+let score = 0;
+let health = 100;
+
+function spawnEnemy(){
+    let enemy = new THREE.Mesh(
+        new THREE.BoxGeometry(2,2,2),
+        new THREE.MeshStandardMaterial({color:0xff0000})
+    );
+    enemy.position.set(
+        (Math.random()-0.5)*100,
+        1,
+        (Math.random()-0.5)*100
+    );
+    scene.add(enemy);
+    enemies.push(enemy);
+}
+
+for(let i=0;i<5;i++) spawnEnemy();
+
+let keys = {};
+
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+document.body.addEventListener("click", () => {
+    document.body.requestPointerLock();
+    shoot();
+});
+
+document.addEventListener("mousemove", (e) => {
+    if(document.pointerLockElement === document.body){
+        camera.rotation.y -= e.movementX * 0.002;
+        camera.rotation.x -= e.movementY * 0.002;
+    }
+});
+
+function shoot(){
+    let raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+    let intersects = raycaster.intersectObjects(enemies);
+
+    if(intersects.length > 0){
+        let hit = intersects[0].object;
+        scene.remove(hit);
+        enemies.splice(enemies.indexOf(hit),1);
+        score++;
+        document.getElementById("score").innerText = score;
+        spawnEnemy();
+    }
+}
+
+function updateMovement(){
+    let speed = 0.2;
+    let direction = new THREE.Vector3();
+    camera.getWorldDirection(direction);
+    direction.y = 0;
+    direction.normalize();
+
+    let right = new THREE.Vector3();
+    right.crossVectors(direction, new THREE.Vector3(0,1,0));
+
+    if(keys["w"]) camera.position.add(direction.clone().multiplyScalar(speed));
+    if(keys["s"]) camera.position.add(direction.clone().multiplyScalar(-speed));
+    if(keys["a"]) camera.position.add(right.clone().multiplyScalar(speed));
+    if(keys["d"]) camera.position.add(right.clone().multiplyScalar(-speed));
+}
+
+function updateEnemies(){
+    enemies.forEach(enemy => {
+        enemy.lookAt(camera.position);
+        enemy.position.z += (camera.position.z - enemy.position.z)*0.002;
+        enemy.position.x += (camera.position.x - enemy.position.x)*0.002;
+
+        if(enemy.position.distanceTo(camera.position) < 1.5){
+            health -= 1;
+            document.getElementById("health").innerText = health;
+            if(health <= 0){
+                alert("Game Over! Pontos: " + score);
+                location.reload();
+            }
+        }
+    });
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    updateMovement();
+    updateEnemies();
+    renderer.render(scene, camera);
+}
+
+animate();
+
+</script>
+</body>
+</html>

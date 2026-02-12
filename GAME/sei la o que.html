@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Desvie dos Meteoros 🚀</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: black;
+        font-family: Arial, sans-serif;
+        color: white;
+        text-align: center;
+    }
+
+    canvas {
+        display: block;
+        margin: auto;
+        background: radial-gradient(circle at center, #111 0%, #000 100%);
+    }
+
+    #score {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    #gameOver {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 36px;
+        display: none;
+    }
+</style>
+</head>
+<body>
+
+<div id="score">Pontuação: 0</div>
+<div id="gameOver">💥 Game Over! Clique para reiniciar</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let player = {
+    x: canvas.width / 2,
+    y: canvas.height - 80,
+    size: 30,
+    speed: 8
+};
+
+let meteors = [];
+let score = 0;
+let gameRunning = true;
+let difficulty = 2;
+
+const scoreDisplay = document.getElementById("score");
+const gameOverText = document.getElementById("gameOver");
+
+function createMeteor() {
+    meteors.push({
+        x: Math.random() * canvas.width,
+        y: -20,
+        size: Math.random() * 20 + 10,
+        speed: Math.random() * difficulty + 2
+    });
+}
+
+function drawPlayer() {
+    ctx.fillStyle = "cyan";
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawMeteors() {
+    ctx.fillStyle = "orange";
+    meteors.forEach((meteor, index) => {
+        meteor.y += meteor.speed;
+        ctx.beginPath();
+        ctx.arc(meteor.x, meteor.y, meteor.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (meteor.y > canvas.height) {
+            meteors.splice(index, 1);
+            score++;
+            difficulty += 0.05;
+        }
+
+        // colisão
+        let dx = player.x - meteor.x;
+        let dy = player.y - meteor.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < player.size + meteor.size) {
+            gameOver();
+        }
+    });
+}
+
+function update() {
+    if (!gameRunning) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawPlayer();
+    drawMeteors();
+
+    scoreDisplay.innerText = "Pontuação: " + score;
+
+    if (Math.random() < 0.03) {
+        createMeteor();
+    }
+
+    requestAnimationFrame(update);
+}
+
+function gameOver() {
+    gameRunning = false;
+    gameOverText.style.display = "block";
+}
+
+function restartGame() {
+    meteors = [];
+    score = 0;
+    difficulty = 2;
+    gameRunning = true;
+    gameOverText.style.display = "none";
+    update();
+}
+
+document.addEventListener("mousemove", (e) => {
+    player.x = e.clientX;
+});
+
+document.addEventListener("touchmove", (e) => {
+    player.x = e.touches[0].clientX;
+});
+
+document.addEventListener("click", () => {
+    if (!gameRunning) restartGame();
+});
+
+update();
+</script>
+
+</body>
+</html>
