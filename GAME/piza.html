@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Pizza FPS 3D 🍕</title>
+<style>
+body { margin:0; overflow:hidden; background:black; }
+canvas { display:block; }
+#ui {
+    position:absolute;
+    top:10px;
+    left:10px;
+    color:white;
+    font-family:Arial;
+    font-size:18px;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">Vida: <span id="health">100</span> Pontos: <span id="score">0</span></div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const TILE = 64;
+const FOV = Math.PI/3;
+const NUM_RAYS = 200;
+
+// MAPA
+const map = [
+[1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,0,0,1,0,0,1,0,0,1],
+[1,0,0,1,0,0,1,0,0,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,0,1,0,1,0,1,0,1,1],
+[1,0,0,0,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1]
+];
+
+// JOGADOR
+let player = { x:2*TILE, y:2*TILE, angle:0, speed:2, health:100, score:0 };
+
+// CONTROLES
+let keys = {};
+document.addEventListener('keydown', e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup', e=>keys[e.key.toLowerCase()]=false);
+document.addEventListener('keydown', e=>{
+    if(e.key===' ') shoot();
+});
+
+// BALAS
+let bullets = [];
+
+// INIMIGOS
+let enemies = [];
+function spawnEnemy(){
+    let x,y;
+    do{
+        x = Math.floor(Math.random()*map[0].length)*TILE + TILE/2;
+        y = Math.floor(Math.random()*map.length)*TILE + TILE/2;
+    }while(map[Math.floor(y/TILE)][Math.floor(x/TILE)]===1);
+    enemies.push({x:x,y:y,size:30,speed:1.2,alive:true});
+}
+setInterval(spawnEnemy,3000);
+
+// ATIRAR
+function shoot(){
+    bullets.push({ x:player.x, y:player.y, angle:player.angle, speed:10 });
+}
+
+// ATUALIZAÇÃO
+function update(){
+    // Movimento do jogador
+    if(keys['w']){
+        let nx = player.x + Math.cos(player.angle)*player.speed;
+        let ny = player.y + Math.sin(player.angle)*player.speed;
+        if(map[Math.floor(ny/TILE)][Math.floor(nx/TILE)]===0){
+            player.x = nx;
+            player.y = ny;
+        }
+    }
+    if(keys['s']){
+        let nx = player.x - Math.cos(player.angle)*player.speed;
+        let ny = player.y - Math.sin(player.angle)*player.speed;
+        if(map[Math.floor(ny/TILE)][Math.floor(nx/TILE)]===0){
+            player.x = nx;
+            player.y = ny;
+        }
+    }
+    if(keys['a']) player.angle -= 0.05;
+    if(keys['d']) player.angle += 0.05;
+
+    // Atualiza balas
+    bullets.forEach((b,i)=>{
+        b.x += Math.cos(b.angle)*b.speed;
+        b.y += Math.sin(b.angle)*b.speed;
+
+        // Colisão com inimigos
+        enemies.forEach(enemy=>{
+            if(enemy.alive && Math.hypot(enemy.x-b.x,enemy.y-b.y)<enemy.size/2){
+                enemy.alive=false;
+                bullets.splice(i,1);
+                player.score += 10;
+            }
+        });
+
+        // Remove fora do mapa
+        if(b.x<0 || b.x>map[0].length*TILE || b.y<0 || b.y>map.length*TILE) bullets.splice(i,1);
+    });
+
+    // Move inimigos
+    enemies.forEach(enemy=>{
+        if(enemy.alive){
+            let dx = player.x - enemy.x;
+            let dy = player.y - enemy.y;
+            let dist = Math.hypot(dx,dy);
+            if(dist>0){
+                let nx = enemy.x + (dx/dist)*enemy.speed;
+                let ny = enemy.y + (dy/dist)*enemy.speed;
+                // Verifica colisão com paredes
+                if(map[Math.floor(ny/TILE)][Math.floor(nx/TILE)]===0){
+                    enemy.x = nx;
+                    enemy.y = ny;
+                }
+            }
+            if(dist<(player.size+enemy.size)/2){
+                player.health -= 0.7;
+            }
+        }
+    });
+
+    document.getElementById("health").innerText = Math.floor(player.health);
+    document.getElementById("score").innerText = player.score;
+
+    if(player.health<=0){
+        alert("Game Over! Pontuação: "+player.score);
+        window.location.reload();
+    }
+}
+
+// RENDERIZAÇÃO (Raycasting simples)
+function draw(){
+    ctx.fillStyle='black';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    for(let i=0;i<NUM_RAYS;i++){
+        let rayAngle = player.angle - FOV/2 + FOV*(i/NUM_RAYS);
+        let distance = 0;
+        let hit=false;
+        while(!hit && distance<1000){
+            distance+=1;
+            let testX = player.x + Math.cos(rayAngle)*distance;
+            let testY = player.y + Math.sin(rayAngle)*distance;
+            let mapX = Math.floor(testX/TILE);
+            let mapY = Math.floor(testY/TILE);
+            if(map[mapY] && map[mapY][mapX]===1) hit=true;
+        }
+        let wallHeight = (TILE*canvas.height)/distance;
+        ctx.fillStyle='orange';
+        ctx.fillRect(i*(canvas.width/NUM_RAYS), canvas.height/2-wallHeight/2, canvas.width/NUM_RAYS+1, wallHeight);
+    }
+
+    // Desenha inimigos
+    enemies.forEach(enemy=>{
+        if(enemy.alive){
+            let dx = enemy.x - player.x;
+            let dy = enemy.y - player.y;
+            let angleToEnemy = Math.atan2(dy,dx) - player.angle;
+            if(Math.abs(angleToEnemy)<FOV/2){
+                let dist = Math.hypot(dx,dy);
+                let size = (TILE*canvas.height)/dist;
+                let x = (angleToEnemy+FOV/2)/FOV*canvas.width;
+                ctx.fillStyle='red';
+                ctx.fillRect(x-size/2,canvas.height/2-size/2,size,size);
+            }
+        }
+    });
+
+    // Desenha balas (pizzas)
+    bullets.forEach(b=>{
+        let dx = b.x - player.x;
+        let dy = b.y - player.y;
+        let angleToBullet = Math.atan2(dy,dx) - player.angle;
+        if(Math.abs(angleToBullet)<FOV/2){
+            let dist = Math.hypot(dx,dy);
+            let size = (TILE*canvas.height)/dist/2;
+            let x = (angleToBullet+FOV/2)/FOV*canvas.width;
+            ctx.fillStyle='yellow';
+            ctx.fillRect(x-size/2,canvas.height/2-size/2,size,size);
+        }
+    });
+}
+
+// LOOP PRINCIPAL
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
