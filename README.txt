@@ -21,3 +21,5 @@ git branch -M main — muda o nome da branch atual para "main".
 
 Enviar branch para o GitHub:
 git push -u origin main — faz push da branch main para o remoto e configura rastreamento; pode pedir autenticação via navegador.
+
+pomklmklmnkl
